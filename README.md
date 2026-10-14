@@ -75,8 +75,8 @@ Download the official HPatches sequences release (~4.2 GB):
 ```bash
 mkdir -p data
 cd data
-wget http://icvl.ee.ic.ac.uk/vbalnt/hpatches/hpatches-sequences-release.tar.gz
-tar -xzf hpatches-sequences-release.tar.gz
+wget -O hpatches-sequences-release.zip https://huggingface.co/datasets/vbalnt/hpatches/resolve/main/hpatches-sequences-release.zip
+unzip -q hpatches-sequences-release.zip
 cd ..
 ```
 
@@ -84,8 +84,8 @@ cd ..
 ```powershell
 mkdir data
 cd data
-Invoke-WebRequest -Uri "http://icvl.ee.ic.ac.uk/vbalnt/hpatches/hpatches-sequences-release.tar.gz" -OutFile "hpatches-sequences-release.tar.gz"
-tar -xzf hpatches-sequences-release.tar.gz
+Invoke-WebRequest -Uri "https://huggingface.co/datasets/vbalnt/hpatches/resolve/main/hpatches-sequences-release.zip" -OutFile "hpatches-sequences-release.zip"
+Expand-Archive -Path "hpatches-sequences-release.zip" -DestinationPath "."
 cd ..
 ```
 
