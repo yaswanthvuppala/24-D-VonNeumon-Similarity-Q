@@ -203,33 +203,56 @@ def compute_corner_error(
 
 def compute_homography_auc(
     errors: List[float],
-    thresholds: List[int] = None
+    thresholds: List[int] = None,
+    num_bins: int = 200
 ) -> Dict[str, float]:
     """
-    Compute homography estimation accuracy (AUC) at multiple pixel thresholds.
+    Compute homography estimation Area Under the Curve (AUC) up to specified pixel thresholds,
+    matching the evaluation protocol of RIPE (Table 2), SuperPoint, D2-Net, and DISK.
 
-    For each threshold t, the metric is the percentage of image pairs whose
-    average corner error is below t pixels.
+    For each threshold T (e.g., 1, 3, 5 px):
+        AUC@T = (1 / T) * integral_0^T Recall(t) dt * 100%
+    where Recall(t) is the fraction of image pairs whose average corner reprojection
+    error is <= t pixels.
 
     Args:
-        errors: List of corner reprojection errors (one per image pair).
-        thresholds: List of pixel thresholds (default: [1, 3, 5, 10]).
+        errors: List of corner reprojection errors in pixels (one per image pair).
+        thresholds: List of upper pixel thresholds (default: [1, 3, 5, 10]).
+        num_bins: Number of sample steps for numerical trapezoidal integration.
 
     Returns:
-        Dict mapping threshold labels to accuracy percentages, e.g.:
-        {'AUC@1px': 23.5, 'AUC@3px': 55.2, 'AUC@5px': 68.1, 'AUC@10px': 82.3}
+        Dict mapping threshold labels to AUC percentages (and raw accuracy), e.g.:
+        {'AUC@1px': 37.93, 'AUC@3px': 58.93, 'AUC@5px': 69.20, ...}
     """
     if thresholds is None:
         thresholds = [1, 3, 5, 10]
 
     if len(errors) == 0:
-        return {f"AUC@{t}px": 0.0 for t in thresholds}
+        res = {f"AUC@{t}px": 0.0 for t in thresholds}
+        for t in thresholds:
+            res[f"Acc@{t}px"] = 0.0
+        return res
 
-    errors_arr = np.array(errors)
+    errors_arr = np.array(errors, dtype=np.float64)
+    # Filter out infinities or negative values for safe numerical analysis
+    valid_mask = np.isfinite(errors_arr) & (errors_arr >= 0)
+    total_pairs = len(errors_arr)
+
+    # Cross-version numpy integration function (supports NumPy <2.0 and >=2.0)
+    trapz_fn = getattr(np, "trapezoid", getattr(np, "trapz", None))
+
     results = {}
     for t in thresholds:
-        correct = np.sum(errors_arr < t)
-        results[f"AUC@{t}px"] = float(correct / len(errors_arr) * 100.0)
+        eval_t = np.linspace(0.0, float(t), num_bins)
+        # Fraction of pairs with error <= step
+        recalls = np.array([np.sum(errors_arr <= step) / total_pairs for step in eval_t])
+        
+        # Area under cumulative accuracy curve normalized by threshold t
+        auc = trapz_fn(recalls, eval_t) / float(t) * 100.0
+        results[f"AUC@{t}px"] = float(auc)
+        
+        # Also store raw pass rate (percentage with error < t)
+        results[f"Acc@{t}px"] = float(np.sum(errors_arr < t) / total_pairs * 100.0)
 
     return results
 
@@ -328,3 +351,56 @@ def get_sequence_pairs(seq_path: str) -> List[Dict[str, str]]:
             })
 
     return pairs
+
+
+# =============================================================================
+# 6. RIPE PAPER (TABLE 2) BENCHMARK BASELINES & FORMATTER
+# =============================================================================
+
+RIPE_PAPER_HPATCHES_RESULTS = {
+    # Method: (Category, Dim, Supervision Label, AUC@1px, AUC@3px, AUC@5px)
+    "Eff. LoFTR (CVPR'24)": ("(Semi-)Dense", "Dense", "D", 42.38, 63.26, 72.75),
+    "Mast3r (ECCV'24)":     ("(Semi-)Dense", "Dense", "D", 29.63, 54.04, 66.86),
+    "RoMa (CVPR'24)":       ("(Semi-)Dense", "Dense", "D", 38.38, 63.75, 73.37),
+    "SIFT (IJCV'04)":       ("Sparse", "128", "—", 29.98, 53.93, 65.01),
+    "SuperPoint (CVPRW'18)":("Sparse", "256", "H", 36.61, 56.92, 67.28),
+    "DISK (NeurIPS'20)":    ("Sparse", "128", "P/D", 37.54, 57.68, 68.08),
+    "ALIKED (TIM'23)":      ("Sparse", "128", "P+H", 31.95, 57.65, 69.35),
+    "SiLK (ICCV'23)":       ("Sparse", "128", "H", 39.05, 57.96, 67.64),
+    "DeDoDe-B (3DV'24)":    ("Sparse", "256", "P", 39.88, 60.59, 70.36),
+    "RIPE (Künzel et al. 2025)": ("Sparse", "256", "Pair", 37.93, 58.93, 69.20),
+}
+
+
+def format_ripe_comparison_table(
+    our_auc1: float,
+    our_auc3: float,
+    our_auc5: float,
+    model_name: str = "QSED (Ours)",
+    dim: int = 24
+) -> str:
+    """
+    Format a clean comparison table comparing our results directly with
+    Table 2 (HPatches Homography Estimation) from the RIPE paper (arXiv:2507.04839).
+    """
+    lines = []
+    lines.append("=" * 78)
+    lines.append("   COMPARISON: RIPE Paper (Table 2) vs QSED on HPatches Benchmark")
+    lines.append("=" * 78)
+    lines.append(f"  {'Category':<14} | {'Method':<25} | {'Dim':>5} | {'Label':^5} | {'AUC@1px':>7} | {'AUC@3px':>7} | {'AUC@5px':>7}")
+    lines.append("  " + "-" * 74)
+
+    curr_cat = None
+    for method, (cat, m_dim, label, a1, a3, a5) in RIPE_PAPER_HPATCHES_RESULTS.items():
+        if cat != curr_cat:
+            curr_cat = cat
+            lines.append(f"  [{cat}]")
+        lines.append(f"  {'':<14} | {method:<25} | {m_dim:>5} | {label:^5} | {a1:>6.2f}% | {a3:>6.2f}% | {a5:>6.2f}%")
+
+    lines.append("  " + "=" * 74)
+    lines.append(f"  {'Proposed':<14} | {model_name:<25} | {dim:>5} | {'Entropy':^5} | {our_auc1:>6.2f}% | {our_auc3:>6.2f}% | {our_auc5:>6.2f}%")
+    lines.append("=" * 78)
+    lines.append("  Supervision Labels: D=Depth, P=Pose/Position, H=Homography Augmentations,")
+    lines.append("                      Pair=Binary Pair Labels, Entropy=Local Density Matrix")
+    lines.append("=" * 78)
+    return "\n".join(lines)

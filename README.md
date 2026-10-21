@@ -136,15 +136,43 @@ Compare with classical 128-D SIFT and 256-bit ORB descriptors:
 python scripts/hpatches_baselines.py --dataset-dir data/hpatches-sequences-release
 ```
 
+### 3. Evaluate on Oxford Affine Benchmark (~50 MB, 8 Sequences)
+Auto-downloads the classic Mikolajczyk dataset from Oxford University and tests across 5 challenge types (Viewpoint, Scale/Rotation, Blur, Lighting, JPEG compression):
+```bash
+python scripts/oxford_eval.py
+```
+
+---
+
+## Benchmark Comparison: RIPE Paper (Table 2 - HPatches)
+
+The benchmark produces direct comparisons matching **Table 2** of the **RIPE** paper (*Künzel et al., arXiv:2507.04839*):
+
+| Category | Method | Supervision | Dim | AUC@1px | AUC@3px | AUC@5px |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| (Semi-)Dense | Eff. LoFTR (CVPR'24) | Depth | Dense | 42.38% | 63.26% | 72.75% |
+| | Mast3r (ECCV'24) | Depth | Dense | 29.63% | 54.04% | 66.86% |
+| | RoMa (CVPR'24) | Depth | Dense | 38.38% | 63.75% | 73.37% |
+| Sparse | SIFT (IJCV'04) | Handcrafted | 128 | 29.98% | 53.93% | 65.01% |
+| | SuperPoint (CVPRW'18) | Homography Aug. | 256 | 36.61% | 56.92% | 67.28% |
+| | DISK (NeurIPS'20) | Pose/Depth | 128 | 37.54% | 57.68% | 68.08% |
+| | ALIKED (TIM'23) | Pose + Homography | 128 | 31.95% | 57.65% | 69.35% |
+| | SiLK (ICCV'23) | Homography Aug. | 128 | 39.05% | 57.96% | 67.64% |
+| | DeDoDe-B (3DV'24) | Pose | 256 | 39.88% | 60.59% | 70.36% |
+| | **RIPE (Künzel et al. 2025)** | **Binary Image Pairs** | **256** | **37.93%** | **58.93%** | **69.20%** |
+| **Proposed** | **QSED 24-D (Ours)** | **Local Density Matrix** | **24** | *Evaluated* | *Evaluated* | *Evaluated* |
+
 ---
 
 ## Output Metrics & Reports
 
 The evaluation outputs:
-- **Accuracy Metrics:** Homography Estimation AUC at 1px, 3px, 5px, and 10px thresholds:
+- **Homography Estimation AUC:** Evaluated at 1px, 3px, and 5px thresholds via trapezoidal integration of the cumulative accuracy curve:
+  $$\text{AUC}@T = \frac{1}{T} \int_0^T \text{Recall}(t) \, dt \times 100\%$$
+- **Corner Reprojection Error:**
   $$\epsilon = \frac{1}{4} \sum_{i=1}^{4} \|\mathbf{H}_{gt}\mathbf{c}_i - \hat{\mathbf{H}}\mathbf{c}_i\|_2$$
 - **Breakdown:** Separate performance for **Illumination (`i_*`)** vs **Viewpoint (`v_*`)** variations.
-- **Reports:**
-  - `outputs/hpatches/hpatches_results.txt`: Formatted benchmark report
-  - `outputs/hpatches/hpatches_per_pair.csv`: Per-pair metrics (keypoints, match counts, corner errors)
-  - `docs/paper_notes/hpatches_results.md`: Markdown summary table
+- **Reports Generated:**
+  - `outputs/hpatches/hpatches_results.txt`: Formatted benchmark report with RIPE Table 2 comparison
+  - `outputs/hpatches/hpatches_per_pair.csv`: Per-pair metrics (keypoint counts, matches, corner error)
+  - `outputs/oxford/oxford_results.txt`: Oxford Affine benchmark report

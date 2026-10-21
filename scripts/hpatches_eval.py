@@ -47,6 +47,7 @@ from src.feature.hpatches_adapter import (
     compute_homography_auc,
     get_hpatches_sequences,
     get_sequence_pairs,
+    format_ripe_comparison_table,
 )
 
 
@@ -118,6 +119,17 @@ def evaluate_hpatches(args):
     dataset_dir = os.path.join(base_dir, args.dataset_dir) if not os.path.isabs(args.dataset_dir) else args.dataset_dir
     output_dir = os.path.join(base_dir, args.output_dir) if not os.path.isabs(args.output_dir) else args.output_dir
     os.makedirs(output_dir, exist_ok=True)
+
+    # Auto-detect if running on Kaggle with mounted dataset
+    if not os.path.isdir(dataset_dir) and os.path.isdir("/kaggle/input"):
+        print("  [Kaggle Environment Detected] Checking /kaggle/input for HPatches sequences...")
+        for root, dirs, _ in os.walk("/kaggle/input"):
+            if "hpatches-sequences-release" in dirs:
+                candidate = os.path.join(root, "hpatches-sequences-release")
+                if os.path.isdir(candidate) and os.path.isfile(os.path.join(candidate, "v_weapons", "1.ppm")):
+                    dataset_dir = candidate
+                    print(f"  --> Found HPatches dataset at: {dataset_dir}")
+                    break
 
     # -------------------------------------------------------------------------
     # 1. Discover sequences
@@ -301,8 +313,19 @@ def evaluate_hpatches(args):
         print(fail_line)
         results_text_lines.append(fail_line)
 
-    print("\n" + "=" * 75)
-    results_text_lines.append("\n" + "=" * 75)
+    # -------------------------------------------------------------------------
+    # Comparison against RIPE Paper Table 2
+    # -------------------------------------------------------------------------
+    all_auc = compute_homography_auc(errors["all"], thresholds=[1, 3, 5])
+    ripe_table_str = format_ripe_comparison_table(
+        our_auc1=all_auc.get("AUC@1px", 0.0),
+        our_auc3=all_auc.get("AUC@3px", 0.0),
+        our_auc5=all_auc.get("AUC@5px", 0.0),
+        model_name=f"QSED-{args.dimension}D (Ours)",
+        dim=args.dimension
+    )
+    print("\n" + ripe_table_str + "\n")
+    results_text_lines.append("\n" + ripe_table_str + "\n")
 
     # -------------------------------------------------------------------------
     # 4. Save results
