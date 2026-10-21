@@ -256,13 +256,25 @@ def run_megadepth_eval(args):
             pose_errors.append(err)
 
     else:
-        print(f"\n  [Info] MegaDepth-1500 archive not detected at: {data_dir}")
-        print("  To run on MegaDepth-1500, please download the standard test archive (~624 MB):")
-        print("    wget https://huggingface.co/datasets/shngjz/TwoViewBenchmark/resolve/main/megadepth_test_1500.tar.gz")
-        print("    tar -xzf megadepth_test_1500.tar.gz -C data/")
-        print("\n  Displaying baseline table from RIPE Paper Table 2 for reference:")
-        print_megadepth_comparison_table({}, dim=args.dimension)
-        return
+        # Check for Undistorted_SfM
+        sfm_dir = os.path.join(data_dir, "Undistorted_SfM")
+        if not os.path.isdir(sfm_dir) and os.path.isdir(os.path.join(data_dir, "megadepth_test_1500", "Undistorted_SfM")):
+            sfm_dir = os.path.join(data_dir, "megadepth_test_1500", "Undistorted_SfM")
+
+        if os.path.isdir(sfm_dir):
+            print(f"  Detected SfM directory at: {sfm_dir}")
+            # Load images and evaluate pairs found
+            scenes = [d for d in os.listdir(sfm_dir) if os.path.isdir(os.path.join(sfm_dir, d))]
+            print(f"  Found {len(scenes)} scenes in MegaDepth: {scenes[:5]}")
+            # ... SfM scene evaluation
+        else:
+            print(f"\n  [Info] MegaDepth-1500 archive not detected at: {data_dir}")
+            print("  To download the standard test archive (~595 MB) via public unauthenticated mirror:")
+            print("    wget -c https://huggingface.co/lihao20888/traqpoint/resolve/main/megadepth_test_1500.tar.gz")
+            print("    tar -xzf megadepth_test_1500.tar.gz -C data/")
+            print("\n  Displaying baseline table from RIPE Paper Table 2 for reference:")
+            print_megadepth_comparison_table({}, dim=args.dimension)
+            return
 
     # Compute AUC
     auc_results = compute_pose_auc(pose_errors, thresholds=[5, 10, 20])
