@@ -1,0 +1,76 @@
+===========================================================================
+   QSED HPatches Benchmark Results
+===========================================================================
+  Date               : 2026-10-21 11:43:22
+  Descriptor          : 24-D Von Neumann Entropy
+  Normalization       : l2
+  Ordering            : raster
+  Matching            : mutual_nn
+  Max keypoints       : 1024
+  Max image side      : 480px
+  RANSAC threshold    : 3.0px
+  Total time          : 907.5s
+
+
+  ILLUMINATION (285 pairs)
+-------------------------------------------------------
+       AUC@1px :  35.62%
+       Acc@1px :  51.58%
+       AUC@3px :  50.86%
+       Acc@3px :  60.70%
+       AUC@5px :  55.21%
+       Acc@5px :  62.81%
+      AUC@10px :  59.59%
+      Acc@10px :  64.91%
+    Matches: mean=285.7, median=255, min=66, max=801
+    Failed homographies: 0/285
+
+  VIEWPOINT (295 pairs)
+-------------------------------------------------------
+       AUC@1px :   9.04%
+       Acc@1px :  24.41%
+       AUC@3px :  25.28%
+       Acc@3px :  38.98%
+       AUC@5px :  31.56%
+       Acc@5px :  42.71%
+      AUC@10px :  38.22%
+      Acc@10px :  46.44%
+    Matches: mean=231.3, median=230, min=60, max=412
+    Failed homographies: 0/295
+
+  ALL (580 pairs)
+-------------------------------------------------------
+       AUC@1px :  22.10%
+       Acc@1px :  37.76%
+       AUC@3px :  37.85%
+       Acc@3px :  49.66%
+       AUC@5px :  43.18%
+       Acc@5px :  52.59%
+      AUC@10px :  48.72%
+      Acc@10px :  55.52%
+    Matches: mean=258.0, median=238, min=60, max=801
+    Failed homographies: 0/580
+
+==============================================================================
+   COMPARISON: RIPE Paper (Table 2) vs QSED on HPatches Benchmark
+==============================================================================
+  Category       | Method                    |   Dim | Label | AUC@1px | AUC@3px | AUC@5px
+  --------------------------------------------------------------------------
+  [(Semi-)Dense]
+                 | Eff. LoFTR (CVPR'24)      | Dense |   D   |  42.38% |  63.26% |  72.75%
+                 | Mast3r (ECCV'24)          | Dense |   D   |  29.63% |  54.04% |  66.86%
+                 | RoMa (CVPR'24)            | Dense |   D   |  38.38% |  63.75% |  73.37%
+  [Sparse]
+                 | SIFT (IJCV'04)            |   128 |   —   |  29.98% |  53.93% |  65.01%
+                 | SuperPoint (CVPRW'18)     |   256 |   H   |  36.61% |  56.92% |  67.28%
+                 | DISK (NeurIPS'20)         |   128 |  P/D  |  37.54% |  57.68% |  68.08%
+                 | ALIKED (TIM'23)           |   128 |  P+H  |  31.95% |  57.65% |  69.35%
+                 | SiLK (ICCV'23)            |   128 |   H   |  39.05% |  57.96% |  67.64%
+                 | DeDoDe-B (3DV'24)         |   256 |   P   |  39.88% |  60.59% |  70.36%
+                 | RIPE (Künzel et al. 2025) |   256 | Pair  |  37.93% |  58.93% |  69.20%
+  ==========================================================================
+  Proposed       | QSED-24D (Ours)           |    24 | Entropy |  22.10% |  37.85% |  43.18%
+==============================================================================
+  Supervision Labels: D=Depth, P=Pose/Position, H=Homography Augmentations,
+                      Pair=Binary Pair Labels, Entropy=Local Density Matrix
+==============================================================================

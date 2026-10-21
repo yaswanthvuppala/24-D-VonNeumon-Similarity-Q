@@ -1,0 +1,15 @@
+QSED 24-D Descriptor - Oxford Affine Benchmark Results
+Date: 2026-10-21 12:42:09
+
+Sequence   | Challenge                 |  AUC@1px |  AUC@3px |  AUC@5px
+------------------------------------------------------------------------
+graf       | Viewpoint (Planar)        |    0.00% |    0.00% |    0.00%
+wall       | Viewpoint (Planar)        |    0.00% |    0.00% |    0.00%
+boat       | Scale & Rotation          |    0.00% |    0.55% |    8.29%
+bark       | Scale & Rotation          |    0.00% |    0.00% |    0.00%
+bikes      | Image Blur                |    0.00% |    0.00% |    0.00%
+trees      | Image Blur                |    0.00% |    0.00% |    0.00%
+leuven     | Illumination Change       |   11.21% |   17.04% |   18.24%
+ubc        | JPEG Compression          |   46.78% |   55.63% |   57.34%
+========================================================================
+OVERALL    | All 8 Sequences           |    7.25% |    9.15% |   10.48%
