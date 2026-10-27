@@ -249,7 +249,8 @@ def run_megadepth_eval(args):
     print("=" * 78)
     print("   QSED 24-D Evaluation on MegaDepth-1500 Benchmark")
     print("=" * 78)
-    print(f"  Descriptor dimension : {args.dimension}-D")
+    descriptor_dimension = args.n * args.n - 1 if args.n is not None else args.dimension
+    print(f"  Descriptor dimension : {descriptor_dimension}-D")
     print(f"  Normalization        : {args.norm}")
     print(f"  Max keypoints        : {args.max_keypoints}")
     print(f"  Max image size       : {args.max_side}px")
@@ -364,8 +365,8 @@ def run_megadepth_eval(args):
         # Extract QSED Keypoints and Descriptors
         kps1 = detect_default_keypoints(img1.astype(np.float64), max_keypoints=args.max_keypoints)
         kps2 = detect_default_keypoints(img2.astype(np.float64), max_keypoints=args.max_keypoints)
-        desc1 = extract_all_entropy_descriptors(img1.astype(np.float64), kps1, dimension=args.dimension, norm=args.norm)
-        desc2 = extract_all_entropy_descriptors(img2.astype(np.float64), kps2, dimension=args.dimension, norm=args.norm)
+        desc1 = extract_all_entropy_descriptors(img1.astype(np.float64), kps1, dimension=args.dimension, norm=args.norm, n=args.n, y=args.y)
+        desc2 = extract_all_entropy_descriptors(img2.astype(np.float64), kps2, dimension=args.dimension, norm=args.norm, n=args.n, y=args.y)
 
         # Mutual Nearest Neighbor Matching
         match_res = match_entropy_descriptors(desc1, desc2, method="mutual_nn")
@@ -418,7 +419,7 @@ def run_megadepth_eval(args):
     print("=" * 65)
 
     # 5. Print Table 2 comparison
-    table_str = print_megadepth_comparison_table(auc_results, dim=args.dimension)
+    table_str = print_megadepth_comparison_table(auc_results, dim=descriptor_dimension)
 
     # 6. Save results
     report_file = os.path.join(output_dir, "megadepth_results.txt")
@@ -443,11 +444,19 @@ def main():
                         help="Resize longer side (default: 1200, matching RIPE Sec 4.4)")
     parser.add_argument("--dimension", type=int, default=24, choices=[9, 24],
                         help="Descriptor dimension")
+    parser.add_argument("--n", type=int, default=None,
+                        help="Odd outer probe-neighborhood size; produces n*n-1 values")
+    parser.add_argument("--y", type=int, default=None,
+                        help="Odd entropy-patch size used at every probe")
     parser.add_argument("--norm", type=str, default="l2", choices=["none", "l2", "unit_entropy"],
                         help="Normalization")
     parser.add_argument("--output-dir", type=str, default=os.path.join("outputs", "megadepth"),
                         help="Output directory")
     args = parser.parse_args()
+    if (args.n is None) != (args.y is None):
+        parser.error("--n and --y must be supplied together")
+    if args.n is not None and (args.n <= 0 or args.y <= 0 or args.n % 2 == 0 or args.y % 2 == 0 or args.y > args.n):
+        parser.error("--n and --y must be positive odd integers with y <= n")
 
     run_megadepth_eval(args)
 

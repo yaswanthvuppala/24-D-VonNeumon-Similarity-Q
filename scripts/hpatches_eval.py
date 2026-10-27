@@ -83,6 +83,10 @@ Examples:
         "--dimension", type=int, default=24, choices=[9, 24],
         help="Descriptor dimension: 9 or 24 (default: 24)"
     )
+    parser.add_argument("--n", type=int, default=None,
+                        help="Odd outer probe-neighborhood size; produces n*n-1 values")
+    parser.add_argument("--y", type=int, default=None,
+                        help="Odd entropy-patch size used at every probe")
     parser.add_argument(
         "--norm", type=str, default="l2", choices=["none", "l2", "unit_entropy"],
         help="Descriptor normalization strategy (default: l2)"
@@ -104,7 +108,12 @@ Examples:
         "--ransac-thresh", type=float, default=3.0,
         help="RANSAC reprojection threshold in pixels (default: 3.0)"
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if (args.n is None) != (args.y is None):
+        parser.error("--n and --y must be supplied together")
+    if args.n is not None and (args.n <= 0 or args.y <= 0 or args.n % 2 == 0 or args.y % 2 == 0 or args.y > args.n):
+        parser.error("--n and --y must be positive odd integers with y <= n")
+    return args
 
 
 # =============================================================================
@@ -137,7 +146,8 @@ def evaluate_hpatches(args):
     print("=" * 75)
     print("   QSED HPatches Benchmark Evaluation")
     print("=" * 75)
-    print(f"  Descriptor dimension : {args.dimension}-D")
+    descriptor_dimension = args.n * args.n - 1 if args.n is not None else args.dimension
+    print(f"  Descriptor dimension : {descriptor_dimension}-D")
     print(f"  Normalization        : {args.norm}")
     print(f"  Ordering             : {args.ordering}")
     print(f"  Matching method      : {args.matching}")
@@ -194,7 +204,7 @@ def evaluate_hpatches(args):
 
         desc_ref = extract_all_entropy_descriptors(
             img_ref, kps_ref,
-            ordering=args.ordering, norm=args.norm, dimension=args.dimension
+            ordering=args.ordering, norm=args.norm, dimension=args.dimension, n=args.n, y=args.y
         )
 
         # Evaluate each pair
@@ -211,7 +221,7 @@ def evaluate_hpatches(args):
             kps_tgt = detect_default_keypoints(img_tgt, max_keypoints=args.max_keypoints)
             desc_tgt = extract_all_entropy_descriptors(
                 img_tgt, kps_tgt,
-                ordering=args.ordering, norm=args.norm, dimension=args.dimension
+                ordering=args.ordering, norm=args.norm, dimension=args.dimension, n=args.n, y=args.y
             )
 
             # Match descriptors
@@ -257,7 +267,7 @@ def evaluate_hpatches(args):
     # -------------------------------------------------------------------------
     print("\n")
     print("=" * 75)
-    print("   RESULTS: QSED {}-D Descriptor on HPatches".format(args.dimension))
+    print("   RESULTS: QSED {}-D Descriptor on HPatches".format(descriptor_dimension))
     print("=" * 75)
 
     results_text_lines = []
@@ -265,7 +275,7 @@ def evaluate_hpatches(args):
     results_text_lines.append("   QSED HPatches Benchmark Results")
     results_text_lines.append("=" * 75)
     results_text_lines.append(f"  Date               : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    results_text_lines.append(f"  Descriptor          : {args.dimension}-D Von Neumann Entropy")
+    results_text_lines.append(f"  Descriptor          : {descriptor_dimension}-D Von Neumann Entropy")
     results_text_lines.append(f"  Normalization       : {args.norm}")
     results_text_lines.append(f"  Ordering            : {args.ordering}")
     results_text_lines.append(f"  Matching            : {args.matching}")
@@ -321,8 +331,8 @@ def evaluate_hpatches(args):
         our_auc1=all_auc.get("AUC@1px", 0.0),
         our_auc3=all_auc.get("AUC@3px", 0.0),
         our_auc5=all_auc.get("AUC@5px", 0.0),
-        model_name=f"QSED-{args.dimension}D (Ours)",
-        dim=args.dimension
+        model_name=f"QSED-{descriptor_dimension}D (Ours)",
+        dim=descriptor_dimension
     )
     print("\n" + ripe_table_str + "\n")
     results_text_lines.append("\n" + ripe_table_str + "\n")
@@ -355,7 +365,7 @@ def evaluate_hpatches(args):
     md_path = os.path.join(docs_dir, "hpatches_results.md")
     with open(md_path, "w", encoding="utf-8") as f:
         f.write("# HPatches Benchmark Results\n\n")
-        f.write(f"**Descriptor:** QSED {args.dimension}-D Von Neumann Entropy  \n")
+        f.write(f"**Descriptor:** QSED {descriptor_dimension}-D Von Neumann Entropy  \n")
         f.write(f"**Normalization:** {args.norm}  \n")
         f.write(f"**Matching:** {args.matching}  \n")
         f.write(f"**Max keypoints:** {args.max_keypoints}  \n")

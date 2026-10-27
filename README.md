@@ -126,6 +126,12 @@ python scripts/hpatches_eval.py --dimension 24 --norm unit_entropy
 # Evaluate the 9-D compact sliding-window descriptor
 python scripts/hpatches_eval.py --dimension 9 --norm l2
 
+# Generalized probe descriptor: 5x5 probes, each using a 3x3 entropy patch (24-D)
+python scripts/hpatches_eval.py --n 5 --y 3 --norm l2
+
+# Larger 7x7 probe neighborhood with 3x3 entropy patches (48-D)
+python scripts/hpatches_eval.py --n 7 --y 3 --norm l2
+
 # Custom keypoint budget and image resolution
 python scripts/hpatches_eval.py --max-keypoints 512 --max-side 480 --ransac-thresh 3.0
 ```

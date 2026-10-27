@@ -188,7 +188,8 @@ def extract_single_p_entropy(
     kp_x_pad: int,
     dy_pi: int,
     dx_pi: int,
-    epsilon: float = 1e-10
+    epsilon: float = 1e-10,
+    patch_size: int = 3
 ) -> Tuple[float, np.ndarray, np.ndarray]:
     """
     Extract the 3x3 neighborhood centered at Pi = (kp_y + dy_pi, kp_x + dx_pi),
@@ -205,15 +206,16 @@ def extract_single_p_entropy(
     Returns:
         Tuple[float, np.ndarray, np.ndarray]:
             - entropy: Von Neumann entropy S(rho) in bits.
-            - rho: 9x9 quantum density matrix.
-            - patch_3x3: 3x3 pixel intensity patch.
+            - rho: patch_size² x patch_size² quantum density matrix.
+            - patch_3x3: Extracted square pixel-intensity patch.
     """
     # Center of Pi in padded coordinate system
     pi_y = kp_y_pad + dy_pi
     pi_x = kp_x_pad + dx_pi
 
-    # Extract complete 3x3 neighborhood centered at Pi
-    patch_3x3 = padded_image[pi_y - 1 : pi_y + 2, pi_x - 1 : pi_x + 2]
+    radius = patch_size // 2
+    patch_3x3 = padded_image[pi_y - radius : pi_y + radius + 1,
+                             pi_x - radius : pi_x + radius + 1]
 
     # Build density matrix using QSED's canonical intensity-based formulation
     rho = build_intensity_density_matrix(patch_3x3, epsilon=epsilon)
@@ -224,6 +226,22 @@ def extract_single_p_entropy(
     return float(entropy), rho, patch_3x3
 
 
+def _get_generic_probe_offsets(n: Optional[int], y: Optional[int]) -> Optional[List[Tuple[int, int]]]:
+    """Return raster-ordered non-center probe offsets for an n x n descriptor."""
+    if n is None and y is None:
+        return None
+    if n is None or y is None:
+        raise ValueError("Both n and y must be supplied together.")
+    if not isinstance(n, (int, np.integer)) or not isinstance(y, (int, np.integer)):
+        raise ValueError("n and y must be positive odd integers.")
+    if n <= 0 or y <= 0 or n % 2 == 0 or y % 2 == 0 or y > n:
+        raise ValueError("n and y must be positive odd integers with y <= n.")
+
+    radius = n // 2
+    return [(dy, dx) for dy in range(-radius, radius + 1)
+            for dx in range(-radius, radius + 1) if (dy, dx) != (0, 0)]
+
+
 def extract_entropy_descriptor(
     image: np.ndarray,
     keypoint: Union[Keypoint, Tuple[int, int], List[int]],
@@ -231,10 +249,12 @@ def extract_entropy_descriptor(
     norm: str = "none",
     pad_width: int = 3,
     epsilon: float = 1e-10,
-    dimension: int = 24
+    dimension: int = 24,
+    n: Optional[int] = None,
+    y: Optional[int] = None
 ) -> np.ndarray:
     """
-    Calculate the Von Neumann entropy descriptor for a single keypoint (9-D or 24-D).
+    Calculate a legacy or configurable Von Neumann entropy descriptor for one keypoint.
 
     Architectures:
     - dimension = 9: Sliding 3x3 window moved across the 5x5 matrix with stride 1 (9 valid sub-windows).
@@ -251,39 +271,52 @@ def extract_entropy_descriptor(
         pad_width: Padding width for boundary reflection padding (default: 3).
         epsilon: Stability constant for density matrix construction.
         dimension: Descriptor dimension (9 or 24, default: 24).
+        n: Optional odd outer probe-neighborhood size. Produces n*n-1 values.
+        y: Optional odd entropy-patch size for every probe. Must be supplied with n.
 
     Returns:
         np.ndarray: Descriptor vector of shape (dimension,).
     """
+    inner_window_size = y
     # Extract coordinates (x = col, y = row)
     if hasattr(keypoint, 'x') and hasattr(keypoint, 'y'):
         x, y = int(keypoint.x), int(keypoint.y)
     else:
         x, y = int(keypoint[0]), int(keypoint[1])
 
-    padded = apply_reflection_padding(image, pad_width=pad_width)
-    kp_y_pad = y + pad_width
-    kp_x_pad = x + pad_width
-
-    # Select offsets based on dimension
-    if dimension == 9:
-        offsets = SLIDING_9_OFFSETS
-    elif dimension == 24:
-        if ordering == "raster":
-            offsets = P_OFFSETS_RASTER
-        elif ordering == "clockwise":
-            offsets = P_OFFSETS_CLOCKWISE
-        else:
-            raise ValueError(f"Unknown ordering '{ordering}'. Expected 'raster' or 'clockwise'.")
+    generic_offsets = _get_generic_probe_offsets(n, inner_window_size)
+    if generic_offsets is not None:
+        patch_size = int(inner_window_size)
+        effective_pad_width = int(n) // 2 + patch_size // 2
+        offsets = generic_offsets
     else:
-        raise ValueError(f"Unsupported descriptor dimension: {dimension}. Choose 9 or 24.")
+        patch_size = 3
+        effective_pad_width = pad_width
 
-    descriptor = np.zeros(dimension, dtype=np.float64)
+        if dimension == 9:
+            offsets = SLIDING_9_OFFSETS
+        elif dimension == 24:
+            if ordering == "raster":
+                offsets = P_OFFSETS_RASTER
+            elif ordering == "clockwise":
+                offsets = P_OFFSETS_CLOCKWISE
+            else:
+                raise ValueError(f"Unknown ordering '{ordering}'. Expected 'raster' or 'clockwise'.")
+        else:
+            raise ValueError(f"Unsupported descriptor dimension: {dimension}. Choose 9 or 24.")
+
+    padded = apply_reflection_padding(image, pad_width=effective_pad_width)
+    kp_y_pad = y + effective_pad_width
+    kp_x_pad = x + effective_pad_width
+
+    descriptor = np.zeros(len(offsets), dtype=np.float64)
     for i, (dy, dx) in enumerate(offsets):
-        s, _, _ = extract_single_p_entropy(padded, kp_y_pad, kp_x_pad, dy, dx, epsilon=epsilon)
+        s, _, _ = extract_single_p_entropy(
+            padded, kp_y_pad, kp_x_pad, dy, dx, epsilon=epsilon, patch_size=patch_size
+        )
         descriptor[i] = s
 
-    descriptor = apply_descriptor_normalization(descriptor, norm=norm)
+    descriptor = apply_descriptor_normalization(descriptor, norm=norm, entropy_dimension=patch_size * patch_size)
     return descriptor
 
 
@@ -294,7 +327,9 @@ def extract_all_entropy_descriptors(
     norm: str = "none",
     pad_width: int = 3,
     epsilon: float = 1e-10,
-    dimension: int = 24
+    dimension: int = 24,
+    n: Optional[int] = None,
+    y: Optional[int] = None
 ) -> np.ndarray:
     """
     Extract Von Neumann entropy descriptors (9-D or 24-D) for a list of N keypoints.
@@ -311,25 +346,33 @@ def extract_all_entropy_descriptors(
     Returns:
         np.ndarray: Feature matrix of shape (N, dimension).
     """
-    if len(keypoints) == 0:
-        return np.empty((0, dimension), dtype=np.float64)
-
-    padded = apply_reflection_padding(image, pad_width=pad_width)
-
-    if dimension == 9:
-        offsets = SLIDING_9_OFFSETS
-    elif dimension == 24:
-        if ordering == "raster":
-            offsets = P_OFFSETS_RASTER
-        elif ordering == "clockwise":
-            offsets = P_OFFSETS_CLOCKWISE
-        else:
-            raise ValueError(f"Unknown ordering '{ordering}'. Expected 'raster' or 'clockwise'.")
+    generic_offsets = _get_generic_probe_offsets(n, y)
+    if generic_offsets is not None:
+        patch_size = int(y)
+        effective_pad_width = int(n) // 2 + patch_size // 2
+        offsets = generic_offsets
     else:
-        raise ValueError(f"Unsupported descriptor dimension: {dimension}. Choose 9 or 24.")
+        patch_size = 3
+        effective_pad_width = pad_width
+        if dimension == 9:
+            offsets = SLIDING_9_OFFSETS
+        elif dimension == 24:
+            if ordering == "raster":
+                offsets = P_OFFSETS_RASTER
+            elif ordering == "clockwise":
+                offsets = P_OFFSETS_CLOCKWISE
+            else:
+                raise ValueError(f"Unknown ordering '{ordering}'. Expected 'raster' or 'clockwise'.")
+        else:
+            raise ValueError(f"Unsupported descriptor dimension: {dimension}. Choose 9 or 24.")
+
+    if len(keypoints) == 0:
+        return np.empty((0, len(offsets)), dtype=np.float64)
+
+    padded = apply_reflection_padding(image, pad_width=effective_pad_width)
 
     n_kps = len(keypoints)
-    descriptors = np.zeros((n_kps, dimension), dtype=np.float64)
+    descriptors = np.zeros((n_kps, len(offsets)), dtype=np.float64)
 
     for idx, kp in enumerate(keypoints):
         if hasattr(kp, 'x') and hasattr(kp, 'y'):
@@ -337,22 +380,28 @@ def extract_all_entropy_descriptors(
         else:
             x, y = int(kp[0]), int(kp[1])
 
-        kp_y_pad = y + pad_width
-        kp_x_pad = x + pad_width
+        kp_y_pad = y + effective_pad_width
+        kp_x_pad = x + effective_pad_width
 
         for i, (dy, dx) in enumerate(offsets):
-            s, _, _ = extract_single_p_entropy(padded, kp_y_pad, kp_x_pad, dy, dx, epsilon=epsilon)
+            s, _, _ = extract_single_p_entropy(
+                padded, kp_y_pad, kp_x_pad, dy, dx, epsilon=epsilon, patch_size=patch_size
+            )
             descriptors[idx, i] = s
 
         if norm != "none":
-            descriptors[idx] = apply_descriptor_normalization(descriptors[idx], norm=norm)
+            descriptors[idx] = apply_descriptor_normalization(
+                descriptors[idx], norm=norm, entropy_dimension=patch_size * patch_size
+            )
 
     return descriptors
 
 
-def apply_descriptor_normalization(descriptor: np.ndarray, norm: str = "none") -> np.ndarray:
+def apply_descriptor_normalization(
+    descriptor: np.ndarray, norm: str = "none", entropy_dimension: int = 9
+) -> np.ndarray:
     """
-    Apply explicit, documented normalization to a 24-D entropy descriptor.
+    Apply explicit, documented normalization to an entropy descriptor.
 
     Design rationale:
     - 'none' (default): Entropy values for 9x9 density matrices are already naturally bounded
@@ -362,8 +411,9 @@ def apply_descriptor_normalization(descriptor: np.ndarray, norm: str = "none") -
     - 'l2': Normalizes the 24-D vector to unit L2 length (||v||_2 = 1).
 
     Args:
-        descriptor: Array of shape (24,).
+        descriptor: Entropy descriptor vector.
         norm: Normalization mode.
+        entropy_dimension: Number of intensity values in each entropy patch.
 
     Returns:
         Normalized array of shape (24,).
@@ -371,7 +421,7 @@ def apply_descriptor_normalization(descriptor: np.ndarray, norm: str = "none") -
     if norm == "none":
         return descriptor
     elif norm == "unit_entropy":
-        s_max = np.log2(9.0)
+        s_max = np.log2(float(entropy_dimension))
         return descriptor / s_max
     elif norm == "l2":
         l2_norm = np.linalg.norm(descriptor)
@@ -522,7 +572,9 @@ def compute_image_similarity_entropy_descriptor(
     matching_method: str = "greedy",
     norm: str = "none",
     ordering: str = "raster",
-    dimension: int = 24
+    dimension: int = 24,
+    n: Optional[int] = None,
+    y: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Full end-to-end comparison between Image A and Image B using the Von Neumann descriptor (9-D or 24-D).
@@ -543,12 +595,14 @@ def compute_image_similarity_entropy_descriptor(
         norm: Normalization strategy ('none', 'unit_entropy', 'l2').
         ordering: Position ordering ('raster' or 'clockwise').
         dimension: Descriptor dimension (9 or 24, default: 24).
+        n: Optional odd outer probe-neighborhood size. Produces n*n-1 values.
+        y: Optional odd entropy-patch size for every probe. Must be supplied with n.
 
     Returns:
         Dict containing:
             - 'similarity_score': Overall similarity in [0, 100]%
             - 'mean_descriptor_distance': Average Euclidean distance of matched keypoints
-            - 'dimension': 9 or 24
+            - 'dimension': Descriptor vector length.
             - 'num_keypoints_a': Count of keypoints in Image A
             - 'num_keypoints_b': Count of keypoints in Image B
             - 'num_matches': Number of corresponding keypoints
@@ -567,8 +621,13 @@ def compute_image_similarity_entropy_descriptor(
         keypoints_b = detect_default_keypoints(image_b)
 
     # 2. Extract descriptors for both images
-    desc_a = extract_all_entropy_descriptors(image_a, keypoints_a, ordering=ordering, norm=norm, dimension=dimension)
-    desc_b = extract_all_entropy_descriptors(image_b, keypoints_b, ordering=ordering, norm=norm, dimension=dimension)
+    desc_a = extract_all_entropy_descriptors(
+        image_a, keypoints_a, ordering=ordering, norm=norm, dimension=dimension, n=n, y=y
+    )
+    desc_b = extract_all_entropy_descriptors(
+        image_b, keypoints_b, ordering=ordering, norm=norm, dimension=dimension, n=n, y=y
+    )
+    descriptor_dimension = desc_a.shape[1]
 
     n_a = len(keypoints_a)
     n_b = len(keypoints_b)
@@ -577,7 +636,7 @@ def compute_image_similarity_entropy_descriptor(
         return {
             "similarity_score": 0.0,
             "mean_descriptor_distance": float('inf'),
-            "dimension": dimension,
+            "dimension": descriptor_dimension,
             "num_keypoints_a": n_a,
             "num_keypoints_b": n_b,
             "num_matches": 0,
@@ -611,7 +670,7 @@ def compute_image_similarity_entropy_descriptor(
     return {
         "similarity_score": similarity_score,
         "mean_descriptor_distance": mean_dist,
-        "dimension": dimension,
+        "dimension": descriptor_dimension,
         "num_keypoints_a": n_a,
         "num_keypoints_b": n_b,
         "num_matches": num_matches,

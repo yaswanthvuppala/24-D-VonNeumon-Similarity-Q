@@ -127,7 +127,8 @@ def run_oxford_evaluation(args):
     print("=" * 76)
     print("   QSED 24-D Descriptor Evaluation on Oxford Affine Benchmark")
     print("=" * 76)
-    print(f"  Descriptor dimension : {args.dimension}-D")
+    descriptor_dimension = args.n * args.n - 1 if args.n is not None else args.dimension
+    print(f"  Descriptor dimension : {descriptor_dimension}-D")
     print(f"  Normalization        : {args.norm}")
     print(f"  Matching method      : {args.matching}")
     print(f"  Max keypoints        : {args.max_keypoints}")
@@ -148,7 +149,7 @@ def run_oxford_evaluation(args):
         img_ref = cv2.imread(ref_img_path, cv2.IMREAD_GRAYSCALE).astype(np.float64)
         kps_ref = detect_default_keypoints(img_ref, max_keypoints=args.max_keypoints)
         desc_ref = extract_all_entropy_descriptors(
-            img_ref, kps_ref, ordering=args.ordering, norm=args.norm, dimension=args.dimension
+            img_ref, kps_ref, ordering=args.ordering, norm=args.norm, dimension=args.dimension, n=args.n, y=args.y
         )
 
         seq_errors = []
@@ -160,7 +161,7 @@ def run_oxford_evaluation(args):
 
             kps_tgt = detect_default_keypoints(img_tgt, max_keypoints=args.max_keypoints)
             desc_tgt = extract_all_entropy_descriptors(
-                img_tgt, kps_tgt, ordering=args.ordering, norm=args.norm, dimension=args.dimension
+                img_tgt, kps_tgt, ordering=args.ordering, norm=args.norm, dimension=args.dimension, n=args.n, y=args.y
             )
 
             match_res = match_entropy_descriptors(desc_ref, desc_tgt, method=args.matching)
@@ -207,7 +208,7 @@ def run_oxford_evaluation(args):
     # Save to report file
     report_file = os.path.join(output_dir, "oxford_results.txt")
     with open(report_file, "w", encoding="utf-8") as f:
-        f.write("QSED 24-D Descriptor - Oxford Affine Benchmark Results\n")
+        f.write(f"QSED {descriptor_dimension}-D Descriptor - Oxford Affine Benchmark Results\n")
         f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
         f.write(f"{'Sequence':<10} | {'Challenge':<25} | {'AUC@1px':>8} | {'AUC@3px':>8} | {'AUC@5px':>8}\n")
         f.write("-" * 72 + "\n")
@@ -226,12 +227,18 @@ def main():
     parser.add_argument("--download", action="store_true", help="Force re-downloading Oxford dataset")
     parser.add_argument("--max-keypoints", type=int, default=1024, help="Max keypoints per image")
     parser.add_argument("--dimension", type=int, default=24, choices=[9, 24], help="Descriptor dimension")
+    parser.add_argument("--n", type=int, default=None, help="Odd outer probe-neighborhood size; produces n*n-1 values")
+    parser.add_argument("--y", type=int, default=None, help="Odd entropy-patch size used at every probe")
     parser.add_argument("--norm", type=str, default="l2", choices=["none", "l2", "unit_entropy"], help="Normalization")
     parser.add_argument("--ordering", type=str, default="raster", help="Probe ordering")
     parser.add_argument("--matching", type=str, default="mutual_nn", help="Matching method")
     parser.add_argument("--ransac-thresh", type=float, default=3.0, help="RANSAC threshold")
     parser.add_argument("--output-dir", type=str, default=os.path.join("outputs", "oxford"), help="Output directory")
     args = parser.parse_args()
+    if (args.n is None) != (args.y is None):
+        parser.error("--n and --y must be supplied together")
+    if args.n is not None and (args.n <= 0 or args.y <= 0 or args.n % 2 == 0 or args.y % 2 == 0 or args.y > args.n):
+        parser.error("--n and --y must be positive odd integers with y <= n")
 
     run_oxford_evaluation(args)
 
