@@ -374,25 +374,43 @@ def extract_all_entropy_descriptors(
     n_kps = len(keypoints)
     descriptors = np.zeros((n_kps, len(offsets)), dtype=np.float64)
 
-    for idx, kp in enumerate(keypoints):
-        if hasattr(kp, 'x') and hasattr(kp, 'y'):
-            x, y = int(kp.x), int(kp.y)
-        else:
-            x, y = int(kp[0]), int(kp[1])
+    if isinstance(keypoints, np.ndarray) and keypoints.ndim == 2 and keypoints.shape[1] == 2:
+        coords = keypoints.astype(np.int64)
+    else:
+        coords = np.asarray([
+            (int(kp.x), int(kp.y)) if hasattr(kp, 'x') and hasattr(kp, 'y') else (int(kp[0]), int(kp[1]))
+            for kp in keypoints
+        ], dtype=np.int64)
 
-        kp_y_pad = y + effective_pad_width
-        kp_x_pad = x + effective_pad_width
+    h_img, w_img = image.shape[:2]
+    coords[:, 0] = np.clip(coords[:, 0], 0, w_img - 1)
+    coords[:, 1] = np.clip(coords[:, 1], 0, h_img - 1)
 
-        for i, (dy, dx) in enumerate(offsets):
-            s, _, _ = extract_single_p_entropy(
-                padded, kp_y_pad, kp_x_pad, dy, dx, epsilon=epsilon, patch_size=patch_size
-            )
-            descriptors[idx, i] = s
+    pts_y = coords[:, 1] + effective_pad_width
+    pts_x = coords[:, 0] + effective_pad_width
+    radius = patch_size // 2
 
-        if norm != "none":
-            descriptors[idx] = apply_descriptor_normalization(
-                descriptors[idx], norm=norm, entropy_dimension=patch_size * patch_size
-            )
+    for i, (dy, dx) in enumerate(offsets):
+        cy = pts_y + dy
+        cx = pts_x + dx
+        patches = np.stack([
+            padded[cy + r, cx + c]
+            for r in range(-radius, radius + 1)
+            for c in range(-radius, radius + 1)
+        ], axis=1)
+        v = patches + epsilon
+        q = v / np.sum(v, axis=1, keepdims=True)
+        q_safe = np.where(q > 0, q, 1.0)
+        descriptors[:, i] = -np.sum(q * np.log2(q_safe), axis=1)
+
+    if norm == "l2":
+        l2_norm = np.linalg.norm(descriptors, axis=1, keepdims=True)
+        descriptors = np.where(l2_norm > 1e-12, descriptors / l2_norm, descriptors)
+    elif norm == "unit_entropy":
+        s_max = np.log2(float(patch_size * patch_size))
+        descriptors = descriptors / s_max
+    elif norm != "none":
+        raise ValueError(f"Unknown normalization mode: '{norm}'. Choose 'none', 'unit_entropy', or 'l2'.")
 
     return descriptors
 

@@ -48,6 +48,33 @@ class ConfigurableDescriptorTests(unittest.TestCase):
         self.assertEqual(extract_entropy_descriptor(self.image, (5, 5), dimension=9).shape, (9,))
         self.assertEqual(extract_entropy_descriptor(self.image, (5, 5), dimension=24).shape, (24,))
 
+    def test_vectorized_matches_single_descriptor(self):
+        pts = [(2, 2), (5, 5), (0, 0), (10, 10)]
+        all_grid_configs = (
+            (5, 3), (5, 5), (7, 3), (7, 5), (9, 3), (9, 5), (11, 3), (11, 5), (13, 3), (13, 5)
+        )
+        for n, y in all_grid_configs:
+            for norm in ("none", "l2", "unit_entropy"):
+                batch = extract_all_entropy_descriptors(self.image, pts, norm=norm, n=n, y=y)
+                for idx, pt in enumerate(pts):
+                    single = extract_entropy_descriptor(self.image, pt, norm=norm, n=n, y=y)
+                    np.testing.assert_allclose(batch[idx], single, rtol=1e-5, atol=1e-5)
+
+    def test_numpy_array_and_clamping(self):
+        pts_arr = np.array([[2, 2], [5, 5], [-1, 20]], dtype=np.int32)
+        batch = extract_all_entropy_descriptors(self.image, pts_arr, n=5, y=3)
+        self.assertEqual(batch.shape, (3, 24))
+        self.assertTrue(np.isfinite(batch).all())
+
+    def test_invalid_normalization_mode(self):
+        with self.assertRaises(ValueError):
+            extract_all_entropy_descriptors(self.image, [(5, 5)], norm="invalid_mode", n=5, y=3)
+
+    def test_empty_keypoints(self):
+        batch = extract_all_entropy_descriptors(self.image, [], n=7, y=3)
+        self.assertEqual(batch.shape, (0, 48))
+
 
 if __name__ == "__main__":
     unittest.main()
+
