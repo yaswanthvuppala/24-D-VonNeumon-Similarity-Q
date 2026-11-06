@@ -76,15 +76,27 @@ def detect_keypoints(
     min_dist_sq = min_distance ** 2
     final_pts = []
     candidate_limit = len(pts) if max_keypoints is None else min(len(pts), max(2000, max_keypoints * 15))
+    cell = max(1, int(min_distance))
+    grid = {}
     
     for y, x, score in pts[:candidate_limit]:
+        gy, gx = y // cell, x // cell
         keep = True
-        for fy, fx in final_pts:
-            if (fy - y) ** 2 + (fx - x) ** 2 < min_dist_sq:
-                keep = False
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                cell_key = (gy + dy, gx + dx)
+                if cell_key in grid:
+                    for fy, fx in grid[cell_key]:
+                        if (fy - y) ** 2 + (fx - x) ** 2 < min_dist_sq:
+                            keep = False
+                            break
+                if not keep:
+                    break
+            if not keep:
                 break
         if keep:
             final_pts.append((y, x))
+            grid.setdefault((gy, gx), []).append((y, x))
             if max_keypoints is not None and len(final_pts) >= max_keypoints:
                 break
             
