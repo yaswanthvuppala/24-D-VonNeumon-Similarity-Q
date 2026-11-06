@@ -150,6 +150,35 @@ python scripts/oxford_eval.py
 
 ---
 
+## Hybrid QSED-RIPE Notebook
+
+`Ripe_Keypoint_based_entropy.ipynb` evaluates two ways of choosing keypoints while keeping the **same Quantum/Von Neumann entropy (QSED) descriptor** for matching:
+
+- **Original QSED (Sobel):** directional-variation/Sobel keypoints followed by QSED extraction.
+- **Hybrid QSED-RIPE (Boosted):** the same Sobel candidates are re-ranked with VGG deep salience before QSED extraction.
+
+“Boosted” refers only to keypoint selection, not to a replacement descriptor:
+
+$$\text{boosted score}=\text{Sobel score}\times(1+\beta\times\text{normalized deep salience})$$
+
+The default boost factor is $\beta=5.0$. QSED remains the descriptor in both variants. The completed benchmark and ablation cells evaluate every discovered HPatches sequence—normally **116 sequences / 580 image pairs**.
+
+### Training the Hybrid Detector
+
+The notebook includes an opt-in training cell. Set `TRAIN_HYBRID = True` only on a CUDA runtime after running the earlier setup cells. It trains the RIPE-style detector while preserving the 120-D QSED descriptor (`N=11`, `Y=3`), selects the checkpoint using validation AUC@5, then evaluates it once on held-out sequences.
+
+To avoid sequence leakage, HPatches is split deterministically with seed `7`:
+
+| Split | Sequences | Purpose |
+| --- | ---: | --- |
+| Train | 81 | Synthetic homography training pairs |
+| Validation | 18 | Checkpoint and inference-setting selection |
+| Test | 17 | Final untouched AUC report |
+
+The cell writes its split, checkpoints, validation sweep, and final metrics to `outputs/hybrid_training/`. If CUDA is unavailable or the current notebook kernel has a failed CUDA context, restart the kernel and rerun from the start; the notebook otherwise falls back to CPU.
+
+---
+
 ## Benchmark Comparison: RIPE Paper (Table 2 - HPatches)
 
 The benchmark produces direct comparisons matching **Table 2** of the **RIPE** paper (*Künzel et al., arXiv:2507.04839*):
